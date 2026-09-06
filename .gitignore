@@ -38,3 +38,6 @@ Thumbs.db
 # herramientas
 .sonarqube/
 .scannerwork/
+
+# contrato OpenAPI: se genera al compilar y la CI lo publica como artefacto
+src/Collective.Api/Collective.Api.json

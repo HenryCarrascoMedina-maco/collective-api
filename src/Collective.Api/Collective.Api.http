@@ -1,0 +1,13 @@
+@host = https://localhost:7118
+
+### Liveness: el proceso responde
+GET {{host}}/health/live
+
+### Readiness: puede atender, con sus dependencias
+GET {{host}}/health/ready
+
+### Contrato OpenAPI (solo en desarrollo)
+GET {{host}}/openapi/v1.json
+
+### Ruta inexistente: debe devolver ProblemDetails sin ninguna pista interna
+GET {{host}}/no-existe

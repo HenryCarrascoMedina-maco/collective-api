@@ -1,0 +1,62 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = crlf
+insert_final_newline = true
+indent_style = space
+indent_size = 4
+trim_trailing_whitespace = true
+
+[*.{json,yml,yaml,md}]
+indent_size = 2
+
+[*.cs]
+dotnet_sort_system_directives_first = true
+csharp_using_directive_placement = outside_namespace:warning
+csharp_style_namespace_declarations = file_scoped:warning
+csharp_prefer_braces = true:warning
+dotnet_style_require_accessibility_modifiers = always:warning
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# --------------------------------------------------------------------------
+# Reglas desactivadas, con motivo. Regla C6: nada se silencia sin justificar.
+# --------------------------------------------------------------------------
+
+# CA1848: exige generadores LoggerMessage. Rendimiento irrelevante en este
+# volumen y penaliza mucho la legibilidad. Se revisara si el log es un cuello.
+dotnet_diagnostic.CA1848.severity = none
+
+# CA2007: ConfigureAwait(false) no aplica en ASP.NET Core, que no tiene
+# SynchronizationContext.
+dotnet_diagnostic.CA2007.severity = none
+
+# CA1812: falsos positivos con clases instanciadas solo por inyeccion.
+dotnet_diagnostic.CA1812.severity = none
+
+# CA1515: las clases publicas de un ejecutable son necesarias para los
+# tests de integracion (WebApplicationFactory).
+dotnet_diagnostic.CA1515.severity = none
+
+# --------------------------------------------------------------------------
+# Supresiones acotadas por ruta. Cada una con su motivo (regla C6).
+# --------------------------------------------------------------------------
+
+[src/Collective.Api/Common/Configuration/*.cs]
+# CA1819 / CA2227: los tipos de configuracion los rellena el binder, que
+# necesita colecciones asignables.
+dotnet_diagnostic.CA1819.severity = none
+dotnet_diagnostic.CA2227.severity = none
+
+[src/Collective.Api/Common/Results/*.cs]
+# CA1716: "Error" coincide con una palabra reservada de Visual Basic. No
+# consumimos este codigo desde VB y renombrarlo empeora la legibilidad.
+dotnet_diagnostic.CA1716.severity = none
+# CA1000: los metodos de fabrica estaticos sobre el generico son el patron
+# Result, deliberado y estandar.
+dotnet_diagnostic.CA1000.severity = none
+
+[tests/**/*.cs]
+# CA1707: los nombres de test con guiones bajos se leen como frases y son la
+# convencion del proyecto. No son API publica de nadie.
+dotnet_diagnostic.CA1707.severity = none

@@ -1,0 +1,83 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  build:
+    name: build, test y calidad
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Sonar necesita el historial para el codigo nuevo
+
+      - name: Configurar .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restaurar
+        run: dotnet restore
+
+      - name: Formato
+        run: dotnet format --verify-no-changes --no-restore
+
+      - name: Compilar
+        # TreatWarningsAsErrors esta en Directory.Build.props: un warning rompe aqui.
+        run: dotnet build -c Release --no-restore
+
+      - name: Tests con cobertura
+        run: >
+          dotnet test -c Release --no-build
+          --collect:"XPlat Code Coverage"
+          --
+          DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
+
+      - name: Dependencias vulnerables
+        # Una vulnerabilidad alta o critica rompe el build (regla S10).
+        run: |
+          dotnet list package --vulnerable --include-transitive 2>&1 | tee vulns.txt
+          if grep -qE "High|Critical" vulns.txt; then
+            echo "::error::Dependencias con vulnerabilidad alta o critica"
+            exit 1
+          fi
+
+      - name: Buscar secretos
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publicar contrato OpenAPI
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi
+          path: src/Collective.Api/Collective.Api.json
+          if-no-files-found: warn
+
+  # ---------------------------------------------------------------------------
+  # Analisis de SonarQube. Desactivado hasta que se decida la instancia (DA-40).
+  # Mientras tanto, el bloqueo real lo hace SonarAnalyzer.CSharp en el paso
+  # "Compilar", que usa el mismo motor de reglas.
+  #
+  # Para activarlo: definir los secretos SONAR_HOST_URL y SONAR_TOKEN.
+  # ---------------------------------------------------------------------------
+  sonar:
+    name: SonarQube
+    runs-on: ubuntu-latest
+    needs: build
+    if: false   # cambiar a: ${{ secrets.SONAR_TOKEN != '' }}
+    steps:
+      - run: echo "Pendiente de DA-40"

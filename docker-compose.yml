@@ -1,0 +1,38 @@
+# Desarrollo local. PLAN_BACKEND.md 11, fase 0.
+# Levanta API + PostgreSQL con un solo comando: docker compose up
+
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: collective-db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-collective}
+      POSTGRES_USER: ${POSTGRES_USER:-collective_app}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-devonly}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-collective_app} -d ${POSTGRES_DB:-collective}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build:
+      context: .
+      dockerfile: src/Collective.Api/Dockerfile
+    container_name: collective-api
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=${POSTGRES_DB:-collective};Username=${POSTGRES_USER:-collective_app};Password=${POSTGRES_PASSWORD:-devonly}"
+      Cors__AllowedOrigins__0: "http://localhost:4200"
+    ports:
+      - "${API_PORT:-8080}:8080"
+
+volumes:
+  db-data:
