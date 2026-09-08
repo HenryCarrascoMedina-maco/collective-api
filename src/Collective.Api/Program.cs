@@ -1,11 +1,17 @@
 using System.Diagnostics.CodeAnalysis;
+using System.Globalization;
+using System.Threading.RateLimiting;
 using Collective.Api.Common.Configuration;
 using Collective.Api.Common.Errors;
 using Collective.Api.Common.Observability;
 using Collective.Api.Common.Security;
+using Collective.Api.Infrastructure.Email;
+using Collective.Api.Modules.Contact;
+using Collective.Api.Persistence;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
+using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Diagnostics.HealthChecks;
-using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -43,9 +49,26 @@ builder.Services
     .ValidateOnStart();
 
 // ---------------------------------------------------------------------------
+// Persistencia
+// ---------------------------------------------------------------------------
+builder.Services.AddDbContext<AppDbContext>(options =>
+{
+    options.UseNpgsql(builder.Configuration.GetConnectionString("Default"));
+
+    // snake_case en Postgres (regla D2): evita comillas por todas partes.
+    options.UseSnakeCaseNamingConvention();
+
+    // Lecturas sin seguimiento por defecto (regla D5).
+    options.UseQueryTrackingBehavior(QueryTrackingBehavior.NoTracking);
+});
+
+// ---------------------------------------------------------------------------
 // Servicios
 // ---------------------------------------------------------------------------
 builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<IpHasher>();
+builder.Services.AddScoped<IEmailSender, LoggingEmailSender>();
+builder.Services.AddScoped<ContactService>();
 
 builder.Services.AddProblemDetails(options =>
 {
@@ -61,8 +84,44 @@ builder.Services.AddProblemDetails(options =>
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddOpenApi();
 
+// ---------------------------------------------------------------------------
+// Limitacion de peticiones. Cualquier endpoint publico la lleva (regla S6).
+// ---------------------------------------------------------------------------
+var rateLimits = builder.Configuration
+    .GetSection(RateLimitSettings.SectionName)
+    .Get<RateLimitSettings>() ?? new RateLimitSettings();
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    options.AddPolicy(RateLimitPolicies.PublicWrite, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = rateLimits.PermitLimit,
+                Window = TimeSpan.FromMinutes(rateLimits.WindowMinutes),
+                QueueLimit = 0,
+            }));
+
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.Headers.RetryAfter = TimeSpan
+            .FromMinutes(rateLimits.WindowMinutes).TotalSeconds
+            .ToString(CultureInfo.InvariantCulture);
+
+        await context.HttpContext.Response
+            .WriteAsJsonAsync(
+                new { title = "Too many requests", status = StatusCodes.Status429TooManyRequests },
+                cancellationToken)
+            .ConfigureAwait(false);
+    };
+});
+
 builder.Services.AddHealthChecks()
-    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live", "ready"]);
+    .AddCheck("self", () => HealthCheckResult.Healthy(), tags: ["live", "ready"])
+    .AddDbContextCheck<AppDbContext>("database", tags: ["ready"]);
 
 builder.Services.AddCors(options =>
 {
@@ -96,6 +155,7 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseCors(CorsSettings.PolicyName);
+app.UseRateLimiter();
 
 // El documento OpenAPI es el contrato con collective-web. En desarrollo se
 // sirve para poder mirarlo; en CI se genera como artefacto.
@@ -113,6 +173,8 @@ app.MapHealthChecks("/health/ready", new HealthCheckOptions
 {
     Predicate = check => check.Tags.Contains("ready"),
 });
+
+app.MapContactEndpoints();
 
 await app.RunAsync().ConfigureAwait(false);
 

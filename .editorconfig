@@ -38,6 +38,12 @@ dotnet_diagnostic.CA1812.severity = none
 # tests de integracion (WebApplicationFactory).
 dotnet_diagnostic.CA1515.severity = none
 
+# S1135 ("completa este TODO"): los comentarios de este proyecto estan en
+# castellano y la palabra "todo" es corriente, asi que la regla dispara
+# constantemente sobre texto normal. La intencion que protege ya la cubre la
+# regla C5 del plan ("cero TODO sin issue enlazado"), que se revisa en el PR.
+dotnet_diagnostic.S1135.severity = none
+
 # --------------------------------------------------------------------------
 # Supresiones acotadas por ruta. Cada una con su motivo (regla C6).
 # --------------------------------------------------------------------------
@@ -60,3 +66,8 @@ dotnet_diagnostic.CA1000.severity = none
 # CA1707: los nombres de test con guiones bajos se leen como frases y son la
 # convencion del proyecto. No son API publica de nadie.
 dotnet_diagnostic.CA1707.severity = none
+
+[src/Collective.Api/Persistence/Migrations/*.cs]
+# Las migraciones las escribe EF Core, no nosotros. Se marcan como generadas
+# para que los analizadores no las juzguen con las reglas de codigo propio.
+generated_code = true
